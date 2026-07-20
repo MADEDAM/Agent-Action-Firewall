@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "description": "행동 유형과 조건에 따라 ALLOW/MASK/BLOCK/NEED_APPROVAL을 결정하는 규칙. 위에서부터 검사하며, 처음 맞는 규칙이 이깁니다.",
+  "rules": [
+    {
+      "id": "R0a",
+      "desc": "프롬프트 인젝션 + 위험행동(삭제/외부전송/시크릿/메일/권한상승)은 즉시 차단",
+      "when": { "injection": true, "action_type_in": ["DELETE", "EXPORT", "SECRET_ACCESS", "SEND", "PRIV_ESC"] },
+      "decision": "BLOCK",
+      "reason": "숨은 악성 명령(프롬프트 인젝션)으로 위험 행동을 시도해 차단합니다."
+    },
+    {
+      "id": "R0b",
+      "desc": "프롬프트 인젝션이 의심되면(그 외 행동) 관리자 승인 필요",
+      "when": { "injection": true },
+      "decision": "NEED_APPROVAL",
+      "reason": "프롬프트 인젝션이 의심되어 관리자 확인이 필요합니다."
+    },
+    {
+      "id": "R_ADMIN1",
+      "desc": "★ 병합(2026-07) RBAC — 관리자 계정이 시크릿 조회/권한상승을 요청하면 즉시 차단 대신 승인 대기로 완화",
+      "when": { "role": "admin", "action_type_in": ["SECRET_ACCESS", "PRIV_ESC"] },
+      "decision": "NEED_APPROVAL",
+      "reason": "관리자 계정 요청이라 즉시 차단은 아니지만, 민감한 행동이라 관리자 승인이 필요합니다(RBAC)."
+    },
+    {
+      "id": "R_ADMIN2",
+      "desc": "★ 병합(2026-07) RBAC — 관리자 계정의 운영DB/백업 삭제도 즉시 차단 대신 승인 대기로 완화",
+      "when": { "role": "admin", "action_type": "DELETE", "target_in": ["prod_db", "backup"] },
+      "decision": "NEED_APPROVAL",
+      "reason": "관리자 계정 요청이라 즉시 차단은 아니지만, 운영 데이터 삭제는 관리자 승인이 필요합니다(RBAC)."
+    },
+    {
+      "id": "R1",
+      "desc": "운영 DB 또는 백업 삭제는 무조건 차단",
+      "when": { "action_type": "DELETE", "target_in": ["prod_db", "backup"] },
+      "decision": "BLOCK",
+      "reason": "운영/백업 데이터 삭제는 복구가 불가능해 차단합니다."
+    },
+    {
+      "id": "R2",
+      "desc": "API Key·Secret 직접 조회는 차단",
+      "when": { "action_type": "SECRET_ACCESS" },
+      "decision": "BLOCK",
+      "reason": "API Key·비밀값 직접 조회는 금지되어 있습니다."
+    },
+    {
+      "id": "R2b",
+      "desc": "관리자 권한 상승(Privilege Escalation)은 차단 — 병합(2026-07)",
+      "when": { "action_type": "PRIV_ESC" },
+      "decision": "BLOCK",
+      "reason": "관리자 권한 상승 시도는 차단합니다."
+    },
+    {
+      "id": "R3",
+      "desc": "외부 URL로 데이터 내보내기는 차단",
+      "when": { "action_type": "EXPORT", "destination": "external" },
+      "decision": "BLOCK",
+      "reason": "외부로의 데이터 전송은 유출 위험이 있어 차단합니다."
+    },
+    {
+      "id": "R4",
+      "desc": "개인정보를 외부로 전송하면 차단",
+      "when": { "action_type": "SEND", "destination": "external", "has_pii": true },
+      "decision": "BLOCK",
+      "reason": "개인정보를 외부 수신자에게 보내는 것은 차단합니다."
+    },
+    {
+      "id": "R4b",
+      "desc": "전체 고객 개인정보 조회는 차단",
+      "when": { "action_type": "PII_ACCESS", "scope": "broadcast" },
+      "decision": "BLOCK",
+      "reason": "전체 고객 이름, 이메일, 전화번호 같은 대량 개인정보 조회는 차단합니다."
+    },
+    {
+      "id": "R5",
+      "desc": "전체(대량) 메일 발송은 관리자 승인 필요",
+      "when": { "action_type": "SEND", "scope": "broadcast" },
+      "decision": "NEED_APPROVAL",
+      "reason": "전체 메일 발송은 영향이 커서 관리자 승인이 필요합니다."
+    },
+    {
+      "id": "R6",
+      "desc": "외부 수신자 메일 발송은 승인 필요",
+      "when": { "action_type": "SEND", "destination": "external" },
+      "decision": "NEED_APPROVAL",
+      "reason": "외부 수신자에게 보내는 메일은 관리자 승인이 필요합니다."
+    },
+    {
+      "id": "R7",
+      "desc": "응답/요청에 개인정보가 있으면 가린 뒤 처리",
+      "when": { "has_pii": true },
+      "decision": "MASK",
+      "reason": "개인정보는 마스킹(가림) 후 제공합니다."
+    },
+    {
+      "id": "R7b",
+      "desc": "비밀값만 있고(PII 없음) 위 규칙에 안 걸리면 마스킹 후 처리 — 병합(2026-07). 100개 시나리오 검증 중 발견: 이 규칙이 없으면 SECRET_ACCESS가 아닌 다른 도구(예: write_file)에 시크릿 텍스트가 섞여도 위험점수로만 넘어가 NEED_APPROVAL이 되고 정작 마스킹은 안 됨.",
+      "when": { "has_secret": true },
+      "decision": "MASK",
+      "reason": "비밀값은 마스킹(가림) 후 제공합니다."
+    },
+    {
+      "id": "R8",
+      "desc": "그 밖의 삭제 행동은 승인 필요",
+      "when": { "action_type": "DELETE" },
+      "decision": "NEED_APPROVAL",
+      "reason": "삭제 행동은 되돌리기 어려워 승인이 필요합니다."
+    }
+  ],
+  "fallback_by_risk": {
+    "CRITICAL": "BLOCK",
+    "HIGH": "NEED_APPROVAL",
+    "MEDIUM": "ALLOW",
+    "LOW": "ALLOW"
+  }
+}

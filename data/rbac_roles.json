@@ -1,0 +1,7 @@
+{
+  "description": "사용자별 권한 등급(Role) 표. 여기 목록에 없는 사용자는 전부 'general'(일반 권한)로 취급합니다. 하드코딩 금지 원칙에 따라 정책 엔진(policy_engine.py)과 분리해서 이 파일에 등급만 따로 관리합니다. 실제 서비스라면 사내 계정 시스템(LDAP/SSO 등)에서 받아와야 하지만, 이 프로젝트는 모의(Mock) 환경이라 이 JSON 표로 대신합니다.",
+  "roles": {
+    "admin_user": "admin",
+    "demo_admin": "admin"
+  }
+}
